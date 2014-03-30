@@ -14,12 +14,15 @@ const uint8_t VALOR_R_VARIABLE=99; //Objetivo, nunca por debajo de cero
 const uint8_t VALOR_R_FIJA=100; //Valor de 3 resistencias fijas de 100k
 const int RTOTAL=VALOR_R_FIJA*4 + VALOR_R_VARIABLE;
 
-const uint8_t PIN_DERIVANDO=A0; //Objetivo, nunca por debajo de cero
-const uint8_t PIN_R1=A0; //Pin R1
-const uint8_t PIN_R2=A1; //Pin R2
-const uint8_t PIN_R3=A2; //Pin R3
-const uint8_t PIN_R4=A3; //Pin R4
-
+const uint8_t PIN_INC=3;
+const uint8_t PIN_UD=4;
+const uint8_t PIN_CS=5;
+const uint8_t PIN_DERIVANDO=6; //Objetivo, nunca por debajo de cero
+const uint8_t PIN_R1=7; //Pin R1
+const uint8_t PIN_R2=8; //Pin R2
+const uint8_t PIN_R3=9; //Pin R3
+const uint8_t PIN_R4=10; //Pin R4
+const int INDEFINIDO=999999;
 boolean estaDerivando = false;
 boolean r1 = true;
 boolean r2 = true;
@@ -29,16 +32,20 @@ unsigned long tIniDerivandoAlMinimo=0; //Tiempo que servirá para almacenar la �
 
 long milisLecturaAnterior=0;
 
+#define BACKLIGHT_PIN     13
+
+
 // the setup routine runs once when you press reset:
-DigiPot pot(2,3,4);
+DigiPot pot(PIN_INC,PIN_UD,PIN_CS);
 
 void setup() {
 
   // initialize serial communication at 9600 bits per second:
   Serial.begin(9600);
+  delay(1000);
+  Serial.println("Inicializando");
 
   Serial.println("www.calentadorsolarpasoapaso.blogspot.com");
-  
   pinMode(PIN_DERIVANDO, OUTPUT); 
   pinMode(PIN_R1, OUTPUT); 
   pinMode(PIN_R2, OUTPUT); 
@@ -50,6 +57,8 @@ void setup() {
   activarResistenciaFija3();
   activarResistenciaFija4();
   
+  pot.reset();
+  
   //Resistencia al mÃ¡ximo
   setValorActualRVariable(VALOR_R_VARIABLE);
 
@@ -57,17 +66,25 @@ void setup() {
   desactivarDerivacion();
 
   setupRadioFrecuencia();  
+
 }
 
 
 // the loop routine runs over and over again forever:
 void loop() {
+/*
   int watts=leerValorRadioFrecuencia();
-  Serial.print("Watios leidos");
-  Serial.println(watts);
-  ajustarSalida( watts);  
 
-  /*
+  if(watts!=INDEFINIDO){
+    Serial.print("Watios leidos ");
+    Serial.println(watts);
+    ajustarSalida( watts);
+  }  
+
+  */
+  //  ejectutarTestResistencias();  
+
+
   ajustarSalida( 20);  
   ajustarSalida( 40);  
   ajustarSalida( 50);  
@@ -93,7 +110,8 @@ void loop() {
   ajustarSalida( 200);  
   ajustarSalida( 300);  
   ajustarSalida( 150);  
-  */
+  
+  
 }
 
 /*
@@ -108,7 +126,7 @@ int ajustarSalida( int watios){
   uint8_t resistenciaActual=getValorActualRVariable();
   //puede pasar que tenga que decrementar mÃ¡s de una resistencia de 100k
   int rTotalActual=getValorRFija() + resistenciaActual;
-
+  
   if(watios<=LIMITE_INFERIOR){
         if(!estaDerivando){
           activarDerivacion(); //Se activa la derivación al mínimo de derivación
@@ -140,7 +158,7 @@ int ajustarSalida( int watios){
   imprimirDatos(watios,incrementoEstimadoR);  
 
   //Delay para ver los valores en el emulador
-  delay(1000);
+  delay(10000);
 
   return incrementoEstimadoR; 
 }
@@ -158,22 +176,26 @@ float calcularWatiosDerivando(){
 void imprimirDatos(int watios,int incrementoEstimadoR){
     float wDerivando=calcularWatiosDerivando();
    int rTotalActual=getResistenciaActual();
-/*
+
   Serial.print("Wat:\t");
   Serial.print(watios);
   Serial.print("\twDeriv:\t");
   Serial.print(wDerivando);
-  Serial.print("\tRT:\t");
-  Serial.print(rTotalActual);
+  Serial.print("\tRF: ");
+  Serial.print(getValorRFija() );
+  Serial.print("\tRV: ");
+  Serial.print(getValorActualRVariable());
   Serial.print("\tInc:");
   Serial.print(incrementoEstimadoR);
-  Serial.print("\tpot\t");
-  Serial.print(getValorActualRVariable());
   Serial.print(" D: ");
   Serial.print(estaDerivando);
   Serial.print(" ");
+  Serial.print(r1);
+  Serial.print(r2);
+  Serial.print(r3);
+  Serial.print(r4);
   Serial.println(" ");
-  */
+  
 }
 
 int modificarResistenciaPotenciometro(int incrementoEstimadoR,int rTotalActual){
@@ -312,10 +334,12 @@ void activarResistenciaFija1(){
 }  
 
 void activarDerivacion(){
-  estaDerivando=true;
-  digitalWrite(PIN_DERIVANDO,HIGH);
-
-  Serial.println("ACTIVO DERIVACION");
+  if(estaDerivando==false){
+    estaDerivando=true;
+    digitalWrite(PIN_DERIVANDO,HIGH);
+  
+    Serial.println("ACTIVO DERIVACION ----------------------------");
+  }
 
 }  
 
@@ -353,7 +377,7 @@ void setValorActualRVariable(int rVariable){
 }
 
 void setupRadioFrecuencia(){
-    Serial.println("Incializando RF");
+    Serial.println("Inicializando RF");
 
     // Initialise the IO and ISR
     vw_set_ptt_inverted(true); // Required for DR3100
@@ -369,27 +393,39 @@ int leerValorRadioFrecuencia(){
     if (vw_get_message(buf, &buflen)) // Non-blocking
     {
 	int i;
-        long ms=millis()-milisLecturaAnterior;
-              
-        milisLecturaAnterior=millis();
         //digitalWrite(13, true); // Flash a light to show received good message
 	// Message with a good checksum received, dump it.
-	Serial.print("Leido: ");
-	Serial.print(" ms:");
-	Serial.print(ms);
-	Serial.print(" Watts:");
 	String valor="";
 	for (i = 0; i < buflen; i++)
 	{
             char caracter=(char)buf[i];
               valor+=caracter;
 	}
-        
-        String watts=valor.substring(0,valor.indexOf(' ')-1);
-        
-        Serial.print("Watios ");
-	Serial.println(watts);
-        return watts.toInt();
+       
+        String watts=valor.substring(0,valor.indexOf(' '));
+	
+        int iWatts=watts.toInt();
+        if(iWatts==0) iWatts=INDEFINIDO;
+        return iWatts;
         //digitalWrite(13, false);
     }
+    return INDEFINIDO;
+}
+
+void ejecutarTestResistencias(){
+  desactivarResistenciaFija1();
+  desactivarResistenciaFija2();
+  desactivarResistenciaFija3();
+  desactivarResistenciaFija4();
+  pot.reset();
+  Serial.println("Mulimetro R debe medir 0");
+  delay(10000);
+  
+  activarResistenciaFija1();
+  activarResistenciaFija2();
+  activarResistenciaFija3();
+  activarResistenciaFija4();
+  setValorActualRVariable(100);
+  Serial.println("Mulimetro R debe medir 500");
+  delay(10000);
 }
